@@ -1,10 +1,12 @@
-use anyhow::Context;
-use lilac::Lilac;
-use rodio::{Sink, Source};
-use std::{path::PathBuf, process, thread};
-use structopt::StructOpt;
+use std::path::PathBuf;
+use std::thread;
 
-type Result = anyhow::Result<()>;
+use clap::Parser;
+use lilac::Lilac;
+use miette::{Context, IntoDiagnostic};
+use rodio::{Sink, Source};
+
+type Result = miette::Result<()>;
 const OK: Result = Result::Ok(());
 
 mod interactive;
@@ -14,17 +16,17 @@ mod transcode;
 ///
 /// If neither of the subcommands are detected,
 /// opens an interactive player and load the provided files.
-#[derive(StructOpt)]
+#[derive(Parser)]
 enum Opt {
     /// Plays a LILAC file
     Play {
         /// File to play
-        #[structopt(name = "FILE")]
+        #[clap(name = "FILE")]
         file: PathBuf,
         /// Playback volume
         ///
         /// Should be anywhere between 0.0 and 1.0 inclusively
-        #[structopt(short, long, name = "VOLUME", default_value = "1.0")]
+        #[clap(short, long, name = "VOLUME", default_value = "1.0")]
         volume: f32,
     },
     /// Transcodes a file to or from LILAC
@@ -34,7 +36,7 @@ enum Opt {
     /// Input and output formats are automatically inferred
     Transcode {
         /// Glob matching the input files
-        #[structopt(name = "GLOB")]
+        #[clap(name = "GLOB")]
         glob: String,
         /// Output files naming pattern
         ///
@@ -44,26 +46,26 @@ enum Opt {
         /// %T with the song title,
         /// %A with the song artist,
         /// %a with the song album.
-        #[structopt(name = "PATTERN", default_value = "%F.%E")]
+        #[clap(name = "PATTERN", default_value = "%F.%E")]
         output: String,
         /// Keep input files after transcoding
-        #[structopt(short, long)]
+        #[clap(short, long)]
         keep: bool,
     },
 
-    #[structopt(external_subcommand)]
-    Interactive(Vec<String>),
+    Interactive {
+        queue: Vec<String>,
+    },
 }
 
-fn main() {
-    if let Err(e) = match Opt::from_args() {
+fn main() -> miette::Result<()> {
+    match Opt::parse() {
         Opt::Play { file, volume } => play(file, volume),
         Opt::Transcode { glob, output, keep } => transcode::main(glob, output, keep),
-        Opt::Interactive(queue) => interactive::main(queue),
-    } {
-        eprintln!("{:#}", e);
-        process::exit(1);
-    }
+        Opt::Interactive { queue } => interactive::main(queue),
+    }?;
+
+    Ok(())
 }
 
 fn play(file: PathBuf, volume: f32) -> Result {
@@ -75,8 +77,13 @@ fn play(file: PathBuf, volume: f32) -> Result {
         lilac.album(),
     );
 
-    let device = rodio::default_output_device().context("no audio device")?;
-    let sink = Sink::new(&device);
+    let (_stream, device) = rodio::OutputStream::try_default()
+        .into_diagnostic()
+        .context("no audio device")?;
+
+    let sink = Sink::try_new(&device)
+        .into_diagnostic()
+        .context("failed to create sink")?;
 
     let source = lilac.source();
     let duration = source.total_duration().unwrap();

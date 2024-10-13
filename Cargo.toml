@@ -2,28 +2,30 @@
 name = "lilac"
 version = "0.1.0"
 authors = ["Raphaël Thériault <raphael_theriault@outlook.com>"]
-edition = "2018"
+edition = "2021"
 description = "The greatest audio codec of all"
 license = "MIT"
+rust-version = "1.81"
 
 [dependencies]
-claxon = { version = "0.4", optional = true }
-hound = { version = "3", optional = true }
-id3 = { version = "0.5", optional = true }
-lewton = { version = "0.10", optional = true }
-minimp3 = { version = "0.3", optional = true }
-rodio = { version = "0.11", default-features = false }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "1"
+claxon = { version = "0.4.3", optional = true }
+hound = { version = "3.5.1", optional = true }
+id3 = { version = "1.14.0", optional = true }
+lewton = { version = "0.10.2", optional = true }
+miette = "7.2.0"
+minimp3 = { git = "https://github.com/Manith-2001/minimp3-rs.git", optional = true }
+rodio = { version = "0.19.0", default-features = false }
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+thiserror = "1.0.64"
 
 [features]
 default = []
 conversion = ["mp3", "flac", "ogg", "wav"]
-mp3 = ["id3", "minimp3"]
-flac = ["claxon"]
-ogg = ["lewton"]
-wav = ["hound"]
+mp3 = ["dep:id3", "dep:minimp3"]
+flac = ["dep:claxon"]
+ogg = ["dep:lewton"]
+wav = ["dep:hound"]
 
 [workspace]
 members = ["cli"]

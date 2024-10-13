@@ -1,14 +1,14 @@
+use std::cmp::Ordering;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::Path;
+use std::time::Duration;
+
+use miette::Diagnostic;
 use rodio::Source;
 use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    fs::File,
-    io::{BufReader, BufWriter, Read, Write},
-    path::Path,
-    time::Duration,
-};
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Diagnostic)]
 pub enum Error {
     #[error("io error: {0}")]
     IO(#[from] std::io::Error),
@@ -86,9 +86,9 @@ impl Lilac {
             sample_rate: self.sample_rate,
 
             samples: self.samples.into_iter().map(move |s| match s.cmp(&0) {
-                Ordering::Less => (s as f32 / min),
+                Ordering::Less => s as f32 / min,
                 Ordering::Equal => 0.0,
-                Ordering::Greater => (s as f32 / max),
+                Ordering::Greater => s as f32 / max,
             }),
 
             duration: Duration::from_millis(
@@ -135,18 +135,18 @@ impl<T: Iterator<Item = f32>> Source for LilacSource<T> {
 
 #[cfg(feature = "mp3")]
 mod mp3 {
-    use crate::{Error, Lilac};
-    use id3::{ErrorKind, Tag};
+    use std::fs::File;
+    use std::io::{BufReader, Read, Seek, SeekFrom};
+    use std::path::Path;
+
+    use id3::{ErrorKind, Tag, TagLike};
     use minimp3::Decoder;
-    use std::{
-        fs::File,
-        io::{BufReader, Read, Seek, SeekFrom},
-        path::Path,
-    };
+
+    use crate::{Error, Lilac};
 
     impl Lilac {
         pub fn from_mp3<R: Read + Seek>(mut reader: R) -> Result<Self, Error> {
-            let (title, artist, year, album, track) = match Tag::read_from(&mut reader) {
+            let (title, artist, year, album, track) = match Tag::read_from2(&mut reader) {
                 Ok(tag) => {
                     let title = tag.title().map(ToOwned::to_owned);
                     let artist = tag.artist().map(ToOwned::to_owned);
@@ -201,13 +201,13 @@ mod mp3 {
 
 #[cfg(feature = "flac")]
 mod flac {
-    use crate::{Error, Lilac};
+    use std::fs::File;
+    use std::io::{BufReader, Read};
+    use std::path::Path;
+
     use claxon::FlacReader;
-    use std::{
-        fs::File,
-        io::{BufReader, Read},
-        path::Path,
-    };
+
+    use crate::{Error, Lilac};
 
     impl Lilac {
         pub fn from_flac<R: Read>(reader: R) -> Result<Self, Error> {
@@ -256,13 +256,13 @@ mod flac {
 
 #[cfg(feature = "ogg")]
 mod ogg {
-    use crate::{Error, Lilac};
+    use std::fs::File;
+    use std::io::{BufReader, Read, Seek};
+    use std::path::Path;
+
     use lewton::inside_ogg::OggStreamReader;
-    use std::{
-        fs::File,
-        io::{BufReader, Read, Seek},
-        path::Path,
-    };
+
+    use crate::{Error, Lilac};
 
     impl Lilac {
         pub fn from_ogg<R: Read + Seek>(reader: R) -> Result<Self, Error> {
@@ -320,13 +320,13 @@ mod ogg {
 
 #[cfg(feature = "wav")]
 mod wav {
-    use crate::{Error, Lilac};
+    use std::fs::File;
+    use std::io::{BufReader, BufWriter, Read, Seek, Write};
+    use std::path::Path;
+
     use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
-    use std::{
-        fs::File,
-        io::{BufReader, BufWriter, Read, Seek, Write},
-        path::Path,
-    };
+
+    use crate::{Error, Lilac};
 
     impl Lilac {
         pub fn from_wav<R: Read>(reader: R) -> Result<Self, Error> {

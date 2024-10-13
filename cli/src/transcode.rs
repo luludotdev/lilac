@@ -1,11 +1,10 @@
-use anyhow::Context;
+use std::fs::{self, File};
+use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::path::PathBuf;
+
 use lilac::Lilac;
+use miette::{miette, IntoDiagnostic};
 use rayon::prelude::*;
-use std::{
-    fs::{self, File},
-    io::{BufReader, Read, Seek, SeekFrom},
-    path::PathBuf,
-};
 
 static MP3_MAGIC_NUMBERS: &[&[u8]] = &[&[0xFF, 0xFB], &[0xFF, 0xF3], &[0xFF, 0xF2], b"ID3"];
 static FLAC_MAGIC_NUMBER: &[u8] = b"fLaC";
@@ -14,10 +13,10 @@ static WAV_MAGIC_NUMBER: &[u8] = b"WAVE";
 const WAV_MAGIC_NUMBER_OFFSET: usize = 8;
 
 pub fn main(glob: String, output: String, keep: bool) -> crate::Result {
-    let files = glob::glob(&glob)?;
-    let results: Vec<anyhow::Result<(PathBuf, PathBuf)>> = files
+    let files = glob::glob(&glob).into_diagnostic()?;
+    let results: Vec<miette::Result<(PathBuf, PathBuf)>> = files
         .par_bridge()
-        .map(|r| transcode(r?, &output, keep))
+        .map(|r| transcode(r.into_diagnostic()?, &output, keep))
         .collect();
     for r in results {
         match r {
@@ -37,8 +36,8 @@ enum Format {
     Wav,
 }
 
-fn transcode(filename: PathBuf, output: &str, keep: bool) -> anyhow::Result<(PathBuf, PathBuf)> {
-    let reader = BufReader::new(File::open(&filename)?);
+fn transcode(filename: PathBuf, output: &str, keep: bool) -> miette::Result<(PathBuf, PathBuf)> {
+    let reader = BufReader::new(File::open(&filename).into_diagnostic()?);
 
     let (lilac, format) = match filename
         .extension()
@@ -60,7 +59,7 @@ fn transcode(filename: PathBuf, output: &str, keep: bool) -> anyhow::Result<(Pat
             "%F",
             filename
                 .file_stem()
-                .context("Invalid filename")?
+                .ok_or_else(|| miette!("Invalid filename"))?
                 .to_string_lossy()
                 .as_ref(),
         )
@@ -90,7 +89,7 @@ fn transcode(filename: PathBuf, output: &str, keep: bool) -> anyhow::Result<(Pat
         .unwrap_or_else(|| PathBuf::from(output));
 
     if let Some(p) = outfile.parent() {
-        fs::create_dir_all(p)?;
+        fs::create_dir_all(p).into_diagnostic()?;
     }
 
     match format {
@@ -99,12 +98,12 @@ fn transcode(filename: PathBuf, output: &str, keep: bool) -> anyhow::Result<(Pat
     }
 
     if !keep {
-        fs::remove_file(&filename)?;
+        fs::remove_file(&filename).into_diagnostic()?;
     }
     Ok((filename, outfile))
 }
 
-fn detect<R: Read + Seek>(mut reader: R) -> anyhow::Result<(Lilac, Format)> {
+fn detect<R: Read + Seek>(mut reader: R) -> miette::Result<(Lilac, Format)> {
     let magic_numer_len = MP3_MAGIC_NUMBERS
         .iter()
         .fold(0, |max, n| max.max(n.len()))
@@ -113,8 +112,8 @@ fn detect<R: Read + Seek>(mut reader: R) -> anyhow::Result<(Lilac, Format)> {
         .max(WAV_MAGIC_NUMBER_OFFSET + WAV_MAGIC_NUMBER.len());
     let mut magic_number = vec![0; magic_numer_len];
 
-    reader.read_exact(&mut magic_number)?;
-    reader.seek(SeekFrom::Start(0))?;
+    reader.read_exact(&mut magic_number).into_diagnostic()?;
+    reader.seek(SeekFrom::Start(0)).into_diagnostic()?;
 
     let result = if MP3_MAGIC_NUMBERS
         .iter()
